@@ -385,7 +385,7 @@ public:
     iterator emplace_hint(const_iterator hint, Args &&... args)
     {
         key_type key = create_key(std::forward<Args>(args)...);
-        if (hint != cend() && m_key_equal(hint->first, key)) {
+        if (check_hint(hint, key)) {
             return create_iterator(hint.m_pos);
         }
         return m_emplace(std::move(key), std::forward<Args>(args)...).first;
@@ -659,7 +659,7 @@ private:
     template <class T, class M>
     iterator m_insert_or_assign(const_iterator hint, T && key, M && value)
     {
-        if (hint != cend() && m_key_equal(hint->first, key)) {
+        if (check_hint(hint, key)) {
             hint.m_pos->get().value.second = std::forward<M>(value);
             return create_iterator(hint.m_pos);
         }
@@ -676,22 +676,21 @@ private:
         return result;
     }
 
-    template <class... ValueArgs>
-    std::pair<iterator, bool> m_emplace(key_type && key, ValueArgs &&... args)
+    template <class... Args>
+    std::pair<iterator, bool> m_emplace(key_type && key, Args &&... args)
     {
-        return emplace_impl(std::move(key), value_args(std::forward<ValueArgs>(args)...));
-    }
-
-    template <class... ValueArgs, class Indices = std::make_index_sequence<std::tuple_size_v<std::tuple<ValueArgs...>>>>
-    std::pair<iterator, bool> emplace_impl(key_type && key, std::tuple<ValueArgs...> && args)
-    {
-        return emplace_impl(std::move(key), std::move(args), Indices{});
-    }
-
-    template <class... ValueArgs, std::size_t... I>
-    std::pair<iterator, bool> emplace_impl(key_type && key, std::tuple<ValueArgs...> && args, std::index_sequence<I...>)
-    {
-        return try_emplace_impl(std::move(key), std::forward<ValueArgs>(std::get<I>(std::move(args)))...);
+        if (RehashPolicy::need_rehash(size() + 1, m_data.size())) {
+            reserve(size() + 1);
+        }
+        const size_type pos = find_insertion_pos(key);
+        const bool used = m_data[pos].is_used();
+        if (!used) {
+            insert_at(pos,
+                      std::piecewise_construct,
+                      std::forward_as_tuple(std::move(key)),
+                      value_args(std::forward<Args>(args)...));
+        }
+        return {create_iterator(&m_data[pos]), !used};
     }
 
     template <class T, class... Args>
@@ -703,7 +702,7 @@ private:
     template <class T, class... Args>
     iterator m_try_emplace(const_iterator hint, T && key, Args &&... args)
     {
-        if (hint != cend() && m_key_equal(hint->first, key)) {
+        if (check_hint(hint, key)) {
             return create_iterator(hint.m_pos);
         }
         return try_emplace_impl(std::forward<T>(key), std::forward<Args>(args)...).first;
@@ -743,6 +742,11 @@ private:
         }
         m_begin = &m_data[pos];
         ++m_size;
+    }
+
+    bool check_hint(const_iterator hint, const key_type & key)
+    {
+        return hint != cend() && m_key_equal(hint->first, key);
     }
 
     template <class T>
