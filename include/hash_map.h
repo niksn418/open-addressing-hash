@@ -502,12 +502,12 @@ public:
 
     mapped_type & operator[](const key_type & key)
     {
-        return try_emplace_impl(key).first->second;
+        return m_data[try_emplace_pos(key).first].get().value.second;
     }
 
     mapped_type & operator[](key_type && key)
     {
-        return try_emplace_impl(std::move(key)).first->second;
+        return m_data[try_emplace_pos(std::move(key)).first].get().value.second;
     }
 
     size_type bucket_count() const
@@ -712,6 +712,13 @@ private:
     template <class T, class... Args>
     std::pair<iterator, bool> try_emplace_impl(T && key, Args &&... args)
     {
+        const auto [pos, inserted] = try_emplace_pos(std::forward<T>(key), std::forward<Args>(args)...);
+        return {create_iterator(&m_data[pos]), inserted};
+    }
+
+    template <class T, class... Args>
+    std::pair<size_type, bool> try_emplace_pos(T && key, Args &&... args)
+    {
         if (RehashPolicy::need_rehash(size() + 1, m_data.size())) {
             reserve(size() + 1);
         }
@@ -723,7 +730,7 @@ private:
                       std::forward_as_tuple(std::forward<T>(key)),
                       std::forward_as_tuple(std::forward<Args>(args)...));
         }
-        return {create_iterator(&m_data[pos]), !used};
+        return {pos, !used};
     }
 
     template <class... Args>
