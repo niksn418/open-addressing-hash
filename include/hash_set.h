@@ -305,8 +305,9 @@ public:
     void clear()
     {
         for (auto it = begin(), stop = end(); it != stop;) {
-            auto cur = it++;
-            cur.m_pos->clear();
+            auto cur = it.m_pos;
+            ++it;
+            cur->clear();
         }
         reset();
     }

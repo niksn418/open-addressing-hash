@@ -294,22 +294,22 @@ public:
 
     void clear()
     {
-        for (auto & element : m_data) {
-            if (!element.is_empty()) {
-                element.clear();
-            }
+        for (auto it = begin(), stop = end(); it != stop;) {
+            auto cur = it.m_pos;
+            ++it;
+            cur->clear();
         }
         reset();
     }
 
     std::pair<iterator, bool> insert(const value_type & value)
     {
-        return m_try_emplace(value.first, value.second);
+        return generic_try_emplace(value.first, value.second);
     }
 
     std::pair<iterator, bool> insert(value_type && value)
     {
-        return m_try_emplace(std::move(value.first), std::move(value.second));
+        return generic_try_emplace(std::move(value.first), std::move(value.second));
     }
 
     template <class P>
@@ -320,12 +320,12 @@ public:
 
     iterator insert(const_iterator hint, const value_type & value)
     {
-        return m_try_emplace(hint, value.first, value.second);
+        return generic_try_emplace(hint, value.first, value.second);
     }
 
     iterator insert(const_iterator hint, value_type && value)
     {
-        return m_try_emplace(hint, std::move(value.first), std::move(value.second));
+        return generic_try_emplace(hint, std::move(value.first), std::move(value.second));
     }
 
     template <class P>
@@ -353,32 +353,32 @@ public:
     template <class M>
     std::pair<iterator, bool> insert_or_assign(const key_type & key, M && value)
     {
-        return m_insert_or_assign(key, std::forward<M>(value));
+        return generic_insert_or_assign(key, std::forward<M>(value));
     }
 
     template <class M>
     std::pair<iterator, bool> insert_or_assign(key_type && key, M && value)
     {
-        return m_insert_or_assign(std::move(key), std::forward<M>(value));
+        return generic_insert_or_assign(std::move(key), std::forward<M>(value));
     }
 
     template <class M>
     iterator insert_or_assign(const_iterator hint, const key_type & key, M && value)
     {
-        return m_insert_or_assign(hint, key, std::forward<M>(value));
+        return generic_insert_or_assign(hint, key, std::forward<M>(value));
     }
 
     template <class M>
     iterator insert_or_assign(const_iterator hint, key_type && key, M && value)
     {
-        return m_insert_or_assign(hint, std::move(key), std::forward<M>(value));
+        return generic_insert_or_assign(hint, std::move(key), std::forward<M>(value));
     }
 
     template <class... Args>
     std::pair<iterator, bool> emplace(Args &&... args)
     {
         key_type key = create_key(std::forward<Args>(args)...);
-        return m_emplace(std::move(key), std::forward<Args>(args)...);
+        return common_emplace(std::move(key), std::forward<Args>(args)...);
     }
 
     template <class... Args>
@@ -388,31 +388,31 @@ public:
         if (check_hint(hint, key)) {
             return create_iterator(hint.m_pos);
         }
-        return m_emplace(std::move(key), std::forward<Args>(args)...).first;
+        return common_emplace(std::move(key), std::forward<Args>(args)...).first;
     }
 
     template <class... Args>
     std::pair<iterator, bool> try_emplace(const key_type & key, Args &&... args)
     {
-        return m_try_emplace(key, std::forward<Args>(args)...);
+        return generic_try_emplace(key, std::forward<Args>(args)...);
     }
 
     template <class... Args>
     std::pair<iterator, bool> try_emplace(key_type && key, Args &&... args)
     {
-        return m_try_emplace(std::move(key), std::forward<Args>(args)...);
+        return generic_try_emplace(std::move(key), std::forward<Args>(args)...);
     }
 
     template <class... Args>
     iterator try_emplace(const_iterator hint, const key_type & key, Args &&... args)
     {
-        return m_try_emplace(hint, key, std::forward<Args>(args)...);
+        return generic_try_emplace(hint, key, std::forward<Args>(args)...);
     }
 
     template <class... Args>
     iterator try_emplace(const_iterator hint, key_type && key, Args &&... args)
     {
-        return m_try_emplace(hint, std::move(key), std::forward<Args>(args)...);
+        return generic_try_emplace(hint, std::move(key), std::forward<Args>(args)...);
     }
 
     iterator erase(const_iterator pos)
@@ -542,16 +542,15 @@ public:
 
     void rehash(const size_type count)
     {
-        std::vector<Element> old_data(std::move(m_data));
-        m_data = std::vector<Element>(RehashPolicy::new_size(count, old_data.size()));
-        iterator it = begin(), stop = end();
+        HashMap old{std::move(*this)};
+        m_data = std::vector<Element>(RehashPolicy::new_size(count, old.m_data.size()));
         reset();
-        while (it != stop) {
-            const size_type start = index(it->first);
+        for (auto & value : old) {
+            const size_type start = index(value.first);
             size_type pos = start;
             for (size_type step = 0; m_data[pos].is_used(); pos = CollisionPolicy::next(start, ++step, m_data.size())) {
             }
-            insert_at(pos, std::move(*(it++)));
+            insert_at(pos, std::move(value));
         }
     }
 
@@ -651,13 +650,13 @@ private:
     }
 
     template <class T, class M>
-    std::pair<iterator, bool> m_insert_or_assign(T && key, M && value)
+    std::pair<iterator, bool> generic_insert_or_assign(T && key, M && value)
     {
         return insert_or_assign_impl(std::forward<T>(key), std::forward<M>(value));
     }
 
     template <class T, class M>
-    iterator m_insert_or_assign(const_iterator hint, T && key, M && value)
+    iterator generic_insert_or_assign(const_iterator hint, T && key, M && value)
     {
         if (check_hint(hint, key)) {
             hint.m_pos->get().value.second = std::forward<M>(value);
@@ -677,7 +676,7 @@ private:
     }
 
     template <class... Args>
-    std::pair<iterator, bool> m_emplace(key_type && key, Args &&... args)
+    std::pair<iterator, bool> common_emplace(key_type && key, Args &&... args)
     {
         if (RehashPolicy::need_rehash(size() + 1, m_data.size())) {
             reserve(size() + 1);
@@ -694,13 +693,13 @@ private:
     }
 
     template <class T, class... Args>
-    std::pair<iterator, bool> m_try_emplace(T && key, Args &&... args)
+    std::pair<iterator, bool> generic_try_emplace(T && key, Args &&... args)
     {
         return try_emplace_impl(std::forward<T>(key), std::forward<Args>(args)...);
     }
 
     template <class T, class... Args>
-    iterator m_try_emplace(const_iterator hint, T && key, Args &&... args)
+    iterator generic_try_emplace(const_iterator hint, T && key, Args &&... args)
     {
         if (check_hint(hint, key)) {
             return create_iterator(hint.m_pos);
