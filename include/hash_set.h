@@ -173,7 +173,7 @@ private:
 
         size_type m_pos;
         container_type * m_container;
-//        we can store m_data.data(), so get_node will look like (m_data.data() + m_pos)->get() (less memory lookups)
+        // we can store m_data.data(), so get_node will look like (m_data.data() + m_pos)->get() (less memory lookups)
 
         constexpr Iterator(const size_type node_index, container_type * container) noexcept
             : m_pos(node_index)
@@ -357,7 +357,7 @@ public:
     iterator erase(const_iterator pos)
     {
         const size_type next = m_data[pos.m_pos].get().next;
-//        const size_type next = pos.get_node().next;
+        // const size_type next = pos.get_node().next;
         remove_node(pos.m_pos);
         return create_iterator(next);
     }
