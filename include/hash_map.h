@@ -295,7 +295,7 @@ public:
     void clear()
     {
         for (auto it = begin(), stop = end(); it != stop;) {
-            auto cur = it.m_pos;
+            const element_ptr_type cur = it.m_pos;
             ++it;
             cur->clear();
         }
@@ -426,10 +426,10 @@ public:
     {
         link_nodes(first.m_pos->get().prev, last.m_pos);
         for (auto it = first; it != last;) {
-            auto next = std::next(it);
-            it.m_pos->erase();
+            const element_ptr_type cur = it.m_pos;
+            ++it;
+            cur->erase();
             --m_size;
-            it = next;
         }
         return create_iterator(last.m_pos);
     }
