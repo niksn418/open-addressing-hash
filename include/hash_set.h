@@ -43,14 +43,11 @@ private:
     {
     };
 
-    struct Element;
-    using element_ptr_type = Element *;
-
     struct Node
     {
         value_type value;
-        element_ptr_type next = nullptr;
-        element_ptr_type prev = nullptr;
+        size_type next = m_end;
+        size_type prev = m_end;
 
         template <class... Args>
         Node(Args &&... args)
@@ -132,6 +129,7 @@ private:
         template <class T = Iterator, std::enable_if_t<hashset_details::IsConst<T>, int> = 0>
         Iterator(const Iterator<false> & other)
             : m_pos(other.m_pos)
+            , m_container(other.m_container)
         {
         }
 
@@ -171,16 +169,21 @@ private:
     private:
         friend class HashSet;
 
-        element_ptr_type m_pos;
+        using container_type = std::conditional_t<is_const, const HashSet, HashSet>;
 
-        constexpr Iterator(const element_ptr_type node_index) noexcept
+        size_type m_pos;
+        container_type * m_container;
+//        we can store m_data.data(), so get_node will look like (m_data.data() + m_pos)->get() (less memory lookups)
+
+        constexpr Iterator(const size_type node_index, container_type * container) noexcept
             : m_pos(node_index)
+            , m_container(container)
         {
         }
 
-        constexpr Node & get_node() const noexcept
+        constexpr auto & get_node() const noexcept
         {
-            return m_pos->get();
+            return m_container->m_data[m_pos].get();
         }
     };
 
@@ -191,8 +194,8 @@ private:
 
     size_type m_size;
 
-    element_ptr_type m_begin;
-    static constexpr element_ptr_type m_end = nullptr;
+    size_type m_begin;
+    static constexpr size_type m_end = std::numeric_limits<size_type>::max();
 
 public:
     using iterator = Iterator<false>;
@@ -215,14 +218,7 @@ public:
         insert(first, last);
     }
 
-    HashSet(const HashSet & other)
-        : m_hash(other.m_hash)
-        , m_key_equal(other.m_key_equal)
-        , m_data(other.m_data)
-        , m_size(other.m_size)
-    {
-        recreate_links(other);
-    }
+    HashSet(const HashSet & other) = default;
 
     HashSet(HashSet && other) = default;
 
@@ -236,9 +232,7 @@ public:
 
     HashSet & operator=(const HashSet & other)
     {
-        m_data = other.m_data;
-        m_size = other.m_size;
-        recreate_links(other);
+        std::tie(m_data, m_size, m_begin) = std::tie(other.m_data, other.m_size, other.m_begin);
         return *this;
     }
 
@@ -305,9 +299,9 @@ public:
     void clear()
     {
         for (auto it = begin(), stop = end(); it != stop;) {
-            auto cur = it.m_pos;
+            const size_type cur = it.m_pos;
             ++it;
-            cur->clear();
+            m_data[cur].clear();
         }
         reset();
     }
@@ -362,19 +356,20 @@ public:
 
     iterator erase(const_iterator pos)
     {
-        const element_ptr_type next = pos.m_pos->get().next;
+        const size_type next = m_data[pos.m_pos].get().next;
+//        const size_type next = pos.get_node().next;
         remove_node(pos.m_pos);
         return create_iterator(next);
     }
 
     iterator erase(const_iterator first, const_iterator last)
     {
-        link_nodes(first.m_pos->get().prev, last.m_pos);
+        link_nodes(m_data[first.m_pos].get().prev, last.m_pos);
         for (auto it = first; it != last;) {
-            auto next = std::next(it);
-            it.m_pos->erase();
+            const size_type cur = it.m_pos;
+            ++it;
+            m_data[cur].erase();
             --m_size;
-            it = next;
         }
         return create_iterator(last.m_pos);
     }
@@ -382,7 +377,7 @@ public:
     size_type erase(const key_type & key)
     {
         if (const size_type pos = search(key); m_data[pos].is_used()) {
-            remove_node(&m_data[pos]);
+            remove_node(pos);
             return 1;
         }
         return 0;
@@ -403,13 +398,13 @@ public:
     iterator find(const key_type & key)
     {
         const size_type pos = search(key);
-        return create_iterator(m_data[pos].is_used() ? &m_data[pos] : m_end);
+        return create_iterator(m_data[pos].is_used() ? pos : m_end);
     }
 
     const_iterator find(const key_type & key) const
     {
         const size_type pos = search(key);
-        return create_const_iterator(m_data[pos].is_used() ? &m_data[pos] : m_end);
+        return create_const_iterator(m_data[pos].is_used() ? pos : m_end);
     }
 
     bool contains(const key_type & key) const
@@ -497,57 +492,38 @@ public:
     }
 
 private:
-    constexpr void recreate_links(const HashSet & other) noexcept
-    {
-        const element_ptr_type begin = &m_data[0];
-        const Element * other_begin = &other.m_data[0];
-        for (auto it = other.begin(), end = other.end(); it != end; ++it) {
-            size_type pos = it.m_pos - other_begin;
-            m_data[pos].get().next = recreate_link(other.m_data[pos].get().next, begin, other_begin);
-            m_data[pos].get().prev = recreate_link(other.m_data[pos].get().prev, begin, other_begin);
-        }
-        m_begin = recreate_link(other.m_begin, begin, other_begin);
-    }
-
-    constexpr element_ptr_type recreate_link(const element_ptr_type link,
-                                             const element_ptr_type begin,
-                                             const Element * other_begin)
-    {
-        return link != nullptr ? begin + (link - other_begin) : nullptr;
-    }
-
     constexpr size_type index(const key_type & key) const noexcept
     {
         return RangeHash::hash(m_hash(key), m_data.size());
     }
 
-    static constexpr iterator create_iterator(const element_ptr_type pos) noexcept
+    constexpr iterator create_iterator(const size_type pos) noexcept
     {
-        return {pos};
+        return {pos, this};
     }
 
-    static constexpr const_iterator create_const_iterator(const element_ptr_type pos) noexcept
+    constexpr const_iterator create_const_iterator(const size_type pos) const noexcept
     {
-        return {pos};
+        return {pos, this};
     }
 
-    constexpr void remove_node(const element_ptr_type pos) noexcept
+    constexpr void remove_node(const size_type pos) noexcept
     {
-        link_nodes(pos->get().prev, pos->get().next);
-        pos->erase();
+        link_nodes(m_data[pos].get().prev, m_data[pos].get().next);
+        m_data[pos].erase();
         --m_size;
     }
 
-    constexpr void link_nodes(const element_ptr_type left, const element_ptr_type right) noexcept
+    constexpr void link_nodes(const size_type left, const size_type right) noexcept
     {
-        if (left != nullptr) {
-            left->get().next = right;
+        if (left != m_end) {
+            m_data[left].get().next = right;
         }
         else {
             m_begin = right;
         }
-        if (right != nullptr) {
-            right->get().prev = left;
+        if (right != m_end) {
+            m_data[right].get().prev = left;
         }
     }
 
@@ -582,7 +558,7 @@ private:
 
     constexpr void reset() noexcept
     {
-        m_begin = nullptr;
+        m_begin = m_end;
         m_size = 0;
     }
 
@@ -612,7 +588,7 @@ private:
         if (!used) {
             insert_at(pos, std::forward<T>(value));
         }
-        return {create_iterator(&m_data[pos]), !used};
+        return {create_iterator(pos), !used};
     }
 
     template <class T>
@@ -621,9 +597,9 @@ private:
         m_data[pos].set(std::forward<T>(value));
         m_data[pos].get().next = m_begin;
         if (m_begin != m_end) {
-            m_begin->get().prev = &m_data[pos];
+            m_data[m_begin].get().prev = pos;
         }
-        m_begin = &m_data[pos];
+        m_begin = pos;
         ++m_size;
     }
 };
