@@ -212,12 +212,16 @@ public:
     HashSet(InputIt first, InputIt last, size_type expected_max_size = 0, const hasher & hash = hasher(), const key_equal & equal = key_equal())
         : HashSet(expected_max_size, hash, equal)
     {
-        insert<InputIt>(first, last);
+        insert(first, last);
     }
 
     HashSet(const HashSet & other)
-        : HashSet(other.begin(), other.end(), other.size(), other.m_hash, other.m_key_equal)
+        : m_hash(other.m_hash)
+        , m_key_equal(other.m_key_equal)
+        , m_data(other.m_data)
+        , m_size(other.m_size)
     {
+        recreate_links(other);
     }
 
     HashSet(HashSet && other) = default;
@@ -226,15 +230,15 @@ public:
             size_type expected_max_size = 0,
             const hasher & hash = hasher(),
             const key_equal & equal = key_equal())
-        : HashSet(init.begin(), init.end(), expected_max_size, hash, equal)
+        : HashSet(init.begin(), init.end(), std::max(expected_max_size, init.size()), hash, equal)
     {
     }
 
     HashSet & operator=(const HashSet & other)
     {
-        clear();
-        reserve(other.size());
-        insert(other.begin(), other.end());
+        m_data = other.m_data;
+        m_size = other.m_size;
+        recreate_links(other);
         return *this;
     }
 
@@ -300,32 +304,31 @@ public:
 
     void clear()
     {
-        for (auto & element : m_data) {
-            if (!element.is_empty()) {
-                element.clear();
-            }
+        for (auto it = begin(), stop = end(); it != stop;) {
+            auto cur = it++;
+            cur.m_pos->clear();
         }
         reset();
     }
 
     std::pair<iterator, bool> insert(const value_type & value)
     {
-        return m_insert(value);
+        return generic_insert(value);
     }
 
     std::pair<iterator, bool> insert(value_type && value)
     {
-        return m_insert(std::move(value));
+        return generic_insert(std::move(value));
     }
 
     iterator insert(const_iterator hint, const value_type & value)
     {
-        return m_insert(hint, value);
+        return generic_insert(hint, value);
     }
 
     iterator insert(const_iterator hint, value_type && value)
     {
-        return m_insert(hint, std::move(value));
+        return generic_insert(hint, std::move(value));
     }
 
     template <class InputIt>
@@ -347,13 +350,13 @@ public:
     template <class... Args>
     std::pair<iterator, bool> emplace(Args &&... args)
     {
-        return m_insert(key_type{std::forward<Args>(args)...});
+        return generic_insert(key_type{std::forward<Args>(args)...});
     }
 
     template <class... Args>
     iterator emplace_hint(const_iterator hint, Args &&... args)
     {
-        return m_insert(hint, key_type{std::forward<Args>(args)...});
+        return generic_insert(hint, key_type{std::forward<Args>(args)...});
     }
 
     iterator erase(const_iterator pos)
@@ -457,16 +460,15 @@ public:
 
     void rehash(const size_type count)
     {
-        std::vector<Element> old_data(std::move(m_data));
-        m_data = std::vector<Element>(RehashPolicy::new_size(count, old_data.size()));
-        auto it = begin(), stop = end();
+        HashSet old{std::move(*this)};
+        m_data = std::vector<Element>(RehashPolicy::new_size(count, old.m_data.size()));
         reset();
-        while (it != stop) {
-            const size_type start = index(it.m_pos->get().value);
+        for (auto & value : old) {
+            const size_type start = index(value);
             size_type pos = start;
             for (size_type step = 0; m_data[pos].is_used(); pos = CollisionPolicy::next(start, ++step, m_data.size())) {
             }
-            insert_at(pos, std::move(*(it++)));
+            insert_at(pos, std::move(value));
         }
     }
 
@@ -494,6 +496,25 @@ public:
     }
 
 private:
+    constexpr void recreate_links(const HashSet & other) noexcept
+    {
+        const element_ptr_type begin = &m_data[0];
+        const Element * other_begin = &other.m_data[0];
+        for (auto it = other.begin(), end = other.end(); it != end; ++it) {
+            size_type pos = it.m_pos - other_begin;
+            m_data[pos].get().next = recreate_link(other.m_data[pos].get().next, begin, other_begin);
+            m_data[pos].get().prev = recreate_link(other.m_data[pos].get().prev, begin, other_begin);
+        }
+        m_begin = recreate_link(other.m_begin, begin, other_begin);
+    }
+
+    constexpr element_ptr_type recreate_link(const element_ptr_type link,
+                                             const element_ptr_type begin,
+                                             const Element * other_begin)
+    {
+        return link != nullptr ? begin + (link - other_begin) : nullptr;
+    }
+
     constexpr size_type index(const key_type & key) const noexcept
     {
         return RangeHash::hash(m_hash(key), m_data.size());
@@ -565,13 +586,13 @@ private:
     }
 
     template <class T>
-    std::pair<iterator, bool> m_insert(T && value)
+    std::pair<iterator, bool> generic_insert(T && value)
     {
         return insert_impl(std::forward<T>(value));
     }
 
     template <class T>
-    iterator m_insert(const_iterator hint, T && value)
+    iterator generic_insert(const_iterator hint, T && value)
     {
         if (hint != cend() && m_key_equal(*hint, value)) {
             return create_iterator(hint.m_pos);
