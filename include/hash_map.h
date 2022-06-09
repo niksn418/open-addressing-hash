@@ -512,12 +512,12 @@ public:
 
     mapped_type & operator[](const key_type & key)
     {
-        return m_data[try_emplace_pos(key).first].get().value.second;
+        return m_data[try_emplace_pos(key)].get().value.second;
     }
 
     mapped_type & operator[](key_type && key)
     {
-        return m_data[try_emplace_pos(std::move(key)).first].get().value.second;
+        return m_data[try_emplace_pos(std::move(key))].get().value.second;
     }
 
     size_type bucket_count() const
@@ -624,7 +624,7 @@ private:
         }
     }
 
-    constexpr size_type find_pos(const key_type & key, bool seek_erased) const noexcept
+    constexpr size_type find_pos(const key_type & key, const bool seek_erased) const noexcept
     {
         const size_type start = index(key);
         size_type first_erased = m_data.size();
@@ -720,13 +720,6 @@ private:
     template <class T, class... Args>
     std::pair<iterator, bool> try_emplace_impl(T && key, Args &&... args)
     {
-        const auto [pos, inserted] = try_emplace_pos(std::forward<T>(key), std::forward<Args>(args)...);
-        return {create_iterator(pos), inserted};
-    }
-
-    template <class T, class... Args>
-    std::pair<size_type, bool> try_emplace_pos(T && key, Args &&... args)
-    {
         if (RehashPolicy::need_rehash(size() + 1, m_data.size())) {
             reserve(size() + 1);
         }
@@ -738,7 +731,23 @@ private:
                       std::forward_as_tuple(std::forward<T>(key)),
                       std::forward_as_tuple(std::forward<Args>(args)...));
         }
-        return {pos, !used};
+        return {create_iterator(pos), !used};
+    }
+
+    template <class T, class... Args>
+    size_type try_emplace_pos(T && key, Args &&... args)
+    {
+        if (RehashPolicy::need_rehash(size() + 1, m_data.size())) {
+            reserve(size() + 1);
+        }
+        const size_type pos = find_insertion_pos(key);
+        if (!m_data[pos].is_used()) {
+            insert_at(pos,
+                      std::piecewise_construct,
+                      std::forward_as_tuple(std::forward<T>(key)),
+                      std::forward_as_tuple(std::forward<Args>(args)...));
+        }
+        return pos;
     }
 
     template <class... Args>

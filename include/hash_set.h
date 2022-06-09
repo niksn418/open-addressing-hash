@@ -525,7 +525,7 @@ private:
         }
     }
 
-    constexpr size_type find_pos(const key_type & key, bool seek_erased) const noexcept
+    constexpr size_type find_pos(const key_type & key, const bool seek_erased) const noexcept
     {
         const size_type start = index(key);
         size_type first_erased = m_data.size();
