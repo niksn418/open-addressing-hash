@@ -46,14 +46,11 @@ private:
     {
     };
 
-    struct Element;
-    using element_ptr_type = Element *;
-
     struct Node
     {
         value_type value;
-        element_ptr_type next = nullptr;
-        element_ptr_type prev = nullptr;
+        size_type next = m_end;
+        size_type prev = m_end;
 
         template <class... Args>
         Node(Args &&... args)
@@ -135,6 +132,7 @@ private:
         template <class T = Iterator, std::enable_if_t<hashmap_details::IsConst<T>, int> = 0>
         Iterator(const Iterator<false> & other)
             : m_pos(other.m_pos)
+            , m_container(other.m_container)
         {
         }
 
@@ -163,7 +161,7 @@ private:
 
         friend bool operator==(const Iterator & lhs, const Iterator & rhs)
         {
-            return lhs.m_pos == rhs.m_pos;
+            return lhs.m_pos == rhs.m_pos && lhs.m_container == rhs.m_container;
         }
 
         friend bool operator!=(const Iterator & lhs, const Iterator & rhs)
@@ -174,16 +172,21 @@ private:
     private:
         friend class HashMap;
 
-        element_ptr_type m_pos;
+        using container_ptr_type = std::conditional_t<is_const, const HashMap *, HashMap *>;
 
-        constexpr Iterator(const element_ptr_type node_index) noexcept
+        size_type m_pos;
+        container_ptr_type m_container;
+        // we can store m_data.data(), so get_node will look like (m_data.data() + m_pos)->get() (less memory lookups)
+
+        constexpr Iterator(const size_type node_index, const container_ptr_type container) noexcept
             : m_pos(node_index)
+            , m_container(container)
         {
         }
 
-        constexpr Node & get_node() const noexcept
+        constexpr auto & get_node() const noexcept
         {
-            return m_pos->get();
+            return m_container->m_data[m_pos].get();
         }
     };
 
@@ -194,8 +197,8 @@ private:
 
     size_type m_size;
 
-    element_ptr_type m_begin;
-    static constexpr element_ptr_type m_end = nullptr;
+    size_type m_begin;
+    static constexpr size_type m_end = std::numeric_limits<size_type>::max();
 
 public:
     using iterator = Iterator<false>;
@@ -212,10 +215,14 @@ public:
     }
 
     template <class InputIt>
-    HashMap(InputIt first, InputIt last, size_type expected_max_size = 0, const hasher & hash = hasher(), const key_equal & equal = key_equal())
+    HashMap(InputIt first,
+            InputIt last,
+            size_type expected_max_size = 0,
+            const hasher & hash = hasher(),
+            const key_equal & equal = key_equal())
         : HashMap(expected_max_size, hash, equal)
     {
-        insert<InputIt>(first, last);
+        insert(first, last);
     }
 
     HashMap(const HashMap & other) = default;
@@ -230,7 +237,11 @@ public:
     {
     }
 
-    HashMap & operator=(const HashMap & other) = default;
+    HashMap & operator=(const HashMap & other)
+    {
+        std::tie(m_data, m_size, m_begin) = std::tie(other.m_data, other.m_size, other.m_begin);
+        return *this;
+    }
 
     HashMap & operator=(HashMap && other) noexcept
     {
@@ -295,9 +306,9 @@ public:
     void clear()
     {
         for (auto it = begin(), stop = end(); it != stop;) {
-            const element_ptr_type cur = it.m_pos;
+            const size_type cur = it.m_pos;
             ++it;
-            cur->clear();
+            m_data[cur].clear();
         }
         reset();
     }
@@ -417,18 +428,19 @@ public:
 
     iterator erase(const_iterator pos)
     {
-        const element_ptr_type next = pos.m_pos->get().next;
+        const size_type next = m_data[pos.m_pos].get().next;
+        // const size_type next = pos.get_node().next;
         remove_node(pos.m_pos);
         return create_iterator(next);
     }
 
     iterator erase(const_iterator first, const_iterator last)
     {
-        link_nodes(first.m_pos->get().prev, last.m_pos);
+        link_nodes(m_data[first.m_pos].get().prev, last.m_pos);
         for (auto it = first; it != last;) {
-            const element_ptr_type cur = it.m_pos;
+            const size_type cur = it.m_pos;
             ++it;
-            cur->erase();
+            m_data[cur].erase();
             --m_size;
         }
         return create_iterator(last.m_pos);
@@ -437,7 +449,7 @@ public:
     size_type erase(const key_type & key)
     {
         if (const size_type pos = search(key); m_data[pos].is_used()) {
-            remove_node(&m_data[pos]);
+            remove_node(pos);
             return 1;
         }
         return 0;
@@ -458,13 +470,13 @@ public:
     iterator find(const key_type & key)
     {
         const size_type pos = search(key);
-        return create_iterator(m_data[pos].is_used() ? &m_data[pos] : m_end);
+        return create_iterator(m_data[pos].is_used() ? pos : m_end);
     }
 
     const_iterator find(const key_type & key) const
     {
         const size_type pos = search(key);
-        return create_const_iterator(m_data[pos].is_used() ? &m_data[pos] : m_end);
+        return create_const_iterator(m_data[pos].is_used() ? pos : m_end);
     }
 
     bool contains(const key_type & key) const
@@ -584,33 +596,33 @@ private:
         return RangeHash::hash(m_hash(key), m_data.size());
     }
 
-    static constexpr iterator create_iterator(const element_ptr_type pos) noexcept
+    constexpr iterator create_iterator(const size_type pos) noexcept
     {
-        return {pos};
+        return {pos, this};
     }
 
-    static constexpr const_iterator create_const_iterator(const element_ptr_type pos) noexcept
+    constexpr const_iterator create_const_iterator(const size_type pos) const noexcept
     {
-        return {pos};
+        return {pos, this};
     }
 
-    constexpr void remove_node(const element_ptr_type pos) noexcept
+    constexpr void remove_node(const size_type pos) noexcept
     {
-        link_nodes(pos->get().prev, pos->get().next);
-        pos->erase();
+        link_nodes(m_data[pos].get().prev, m_data[pos].get().next);
+        m_data[pos].erase();
         --m_size;
     }
 
-    constexpr void link_nodes(const element_ptr_type left, const element_ptr_type right) noexcept
+    constexpr void link_nodes(const size_type left, const size_type right) noexcept
     {
-        if (left != nullptr) {
-            left->get().next = right;
+        if (left != m_end) {
+            m_data[left].get().next = right;
         }
         else {
             m_begin = right;
         }
-        if (right != nullptr) {
-            right->get().prev = left;
+        if (right != m_end) {
+            m_data[right].get().prev = left;
         }
     }
 
@@ -645,7 +657,7 @@ private:
 
     constexpr void reset() noexcept
     {
-        m_begin = nullptr;
+        m_begin = m_end;
         m_size = 0;
     }
 
@@ -659,7 +671,7 @@ private:
     iterator generic_insert_or_assign(const_iterator hint, T && key, M && value)
     {
         if (check_hint(hint, key)) {
-            hint.m_pos->get().value.second = std::forward<M>(value);
+            m_data[hint.m_pos].get().value.second = std::forward<M>(value);
             return create_iterator(hint.m_pos);
         }
         return insert_or_assign_impl(std::forward<T>(key), std::forward<M>(value)).first;
@@ -689,7 +701,7 @@ private:
                       std::forward_as_tuple(std::move(key)),
                       value_args(std::forward<Args>(args)...));
         }
-        return {create_iterator(&m_data[pos]), !used};
+        return {create_iterator(pos), !used};
     }
 
     template <class T, class... Args>
@@ -711,7 +723,7 @@ private:
     std::pair<iterator, bool> try_emplace_impl(T && key, Args &&... args)
     {
         const auto [pos, inserted] = try_emplace_pos(std::forward<T>(key), std::forward<Args>(args)...);
-        return {create_iterator(&m_data[pos]), inserted};
+        return {create_iterator(pos), inserted};
     }
 
     template <class T, class... Args>
@@ -737,9 +749,9 @@ private:
         m_data[pos].set(std::forward<Args>(args)...);
         m_data[pos].get().next = m_begin;
         if (m_begin != m_end) {
-            m_begin->get().prev = &m_data[pos];
+            m_data[m_begin].get().prev = pos;
         }
-        m_begin = &m_data[pos];
+        m_begin = pos;
         ++m_size;
     }
 
@@ -755,7 +767,9 @@ private:
     }
 
     template <class... KeyArgs, class... ValueArgs>
-    static constexpr key_type create_key(std::piecewise_construct_t, std::tuple<KeyArgs...> key_args, std::tuple<ValueArgs...>)
+    static constexpr key_type create_key(std::piecewise_construct_t,
+                                         std::tuple<KeyArgs...> key_args,
+                                         std::tuple<ValueArgs...>)
     {
         return std::make_from_tuple<key_type>(key_args);
     }
@@ -773,7 +787,9 @@ private:
     }
 
     template <class... KeyArgs, class... ValueArgs>
-    static constexpr auto value_args(std::piecewise_construct_t, std::tuple<KeyArgs...>, std::tuple<ValueArgs...> value_args)
+    static constexpr auto value_args(std::piecewise_construct_t,
+                                     std::tuple<KeyArgs...>,
+                                     std::tuple<ValueArgs...> value_args)
     {
         return value_args;
     }

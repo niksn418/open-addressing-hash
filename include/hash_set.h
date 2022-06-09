@@ -158,7 +158,7 @@ private:
 
         friend bool operator==(const Iterator & lhs, const Iterator & rhs)
         {
-            return lhs.m_pos == rhs.m_pos;
+            return lhs.m_pos == rhs.m_pos && lhs.m_container == rhs.m_container;
         }
 
         friend bool operator!=(const Iterator & lhs, const Iterator & rhs)
@@ -169,13 +169,13 @@ private:
     private:
         friend class HashSet;
 
-        using container_type = std::conditional_t<is_const, const HashSet, HashSet>;
+        using container_ptr_type = std::conditional_t<is_const, const HashSet *, HashSet *>;
 
         size_type m_pos;
-        container_type * m_container;
+        container_ptr_type m_container;
         // we can store m_data.data(), so get_node will look like (m_data.data() + m_pos)->get() (less memory lookups)
 
-        constexpr Iterator(const size_type node_index, container_type * container) noexcept
+        constexpr Iterator(const size_type node_index, const container_ptr_type container) noexcept
             : m_pos(node_index)
             , m_container(container)
         {
