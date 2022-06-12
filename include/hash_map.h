@@ -434,7 +434,7 @@ public:
 
     iterator erase(const_iterator first, const_iterator last)
     {
-        link_nodes(m_data[first.m_pos].get().prev, last.m_pos);
+        link_nodes(first.get_node().prev, last.m_pos);
         for (auto it = first; it != last;) {
             const size_type cur = it.m_pos;
             ++it;
@@ -512,12 +512,12 @@ public:
 
     mapped_type & operator[](const key_type & key)
     {
-        return m_data[try_emplace_pos(key)].get().value.second;
+        return generic_braces_operator(key);
     }
 
     mapped_type & operator[](key_type && key)
     {
-        return m_data[try_emplace_pos(std::move(key))].get().value.second;
+        return generic_braces_operator(std::move(key));
     }
 
     size_type bucket_count() const
@@ -662,7 +662,8 @@ private:
     template <class T, class M>
     std::pair<iterator, bool> generic_insert_or_assign(T && key, M && value)
     {
-        return insert_or_assign_impl(std::forward<T>(key), std::forward<M>(value));
+        bool inserted;
+        return {insert_or_assign_impl(inserted, std::forward<T>(key), std::forward<M>(value)), inserted};
     }
 
     template <class T, class M>
@@ -672,15 +673,16 @@ private:
             m_data[hint.m_pos].get().value.second = std::forward<M>(value);
             return create_iterator(hint.m_pos);
         }
-        return insert_or_assign_impl(std::forward<T>(key), std::forward<M>(value)).first;
+        bool inserted;
+        return insert_or_assign_impl(inserted, std::forward<T>(key), std::forward<M>(value));
     }
 
     template <class T, class M>
-    std::pair<iterator, bool> insert_or_assign_impl(T && key, M && value)
+    iterator insert_or_assign_impl(bool & inserted, T && key, M && value)
     {
-        std::pair<iterator, bool> result = try_emplace(std::forward<T>(key), std::forward<M>(value));
-        if (!result.second) {
-            result.first->second = std::forward<M>(value);
+        iterator result = try_emplace_impl(inserted, std::forward<T>(key), std::forward<M>(value));
+        if (!inserted) {
+            result->second = std::forward<M>(value);
         }
         return result;
     }
@@ -705,7 +707,8 @@ private:
     template <class T, class... Args>
     std::pair<iterator, bool> generic_try_emplace(T && key, Args &&... args)
     {
-        return try_emplace_impl(std::forward<T>(key), std::forward<Args>(args)...);
+        bool inserted;
+        return {try_emplace_impl(inserted, std::forward<T>(key), std::forward<Args>(args)...), inserted};
     }
 
     template <class T, class... Args>
@@ -714,40 +717,38 @@ private:
         if (check_hint(hint, key)) {
             return create_iterator(hint.m_pos);
         }
-        return try_emplace_impl(std::forward<T>(key), std::forward<Args>(args)...).first;
+        bool inserted;
+        return try_emplace_impl(inserted, std::forward<T>(key), std::forward<Args>(args)...);
     }
 
     template <class T, class... Args>
-    std::pair<iterator, bool> try_emplace_impl(T && key, Args &&... args)
+    iterator try_emplace_impl(bool & inserted, T && key, Args &&... args)
+    {
+        return create_iterator(try_emplace_pos(inserted, std::forward<T>(key), std::forward<Args>(args)...));
+    }
+
+    template <class T, class... Args>
+    size_type try_emplace_pos(bool & inserted, T && key, Args &&... args)
     {
         if (RehashPolicy::need_rehash(size() + 1, m_data.size())) {
             reserve(size() + 1);
         }
         const size_type pos = find_insertion_pos(key);
-        const bool used = m_data[pos].is_used();
-        if (!used) {
-            insert_at(pos,
-                      std::piecewise_construct,
-                      std::forward_as_tuple(std::forward<T>(key)),
-                      std::forward_as_tuple(std::forward<Args>(args)...));
-        }
-        return {create_iterator(pos), !used};
-    }
-
-    template <class T, class... Args>
-    size_type try_emplace_pos(T && key, Args &&... args)
-    {
-        if (RehashPolicy::need_rehash(size() + 1, m_data.size())) {
-            reserve(size() + 1);
-        }
-        const size_type pos = find_insertion_pos(key);
-        if (!m_data[pos].is_used()) {
+        inserted = !m_data[pos].is_used();
+        if (inserted) {
             insert_at(pos,
                       std::piecewise_construct,
                       std::forward_as_tuple(std::forward<T>(key)),
                       std::forward_as_tuple(std::forward<Args>(args)...));
         }
         return pos;
+    }
+
+    template <class T>
+    mapped_type & generic_braces_operator(T && key)
+    {
+        bool inserted;
+        return m_data[try_emplace_pos(inserted, std::forward<T>(key))].get().value.second;
     }
 
     template <class... Args>

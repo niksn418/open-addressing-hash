@@ -362,7 +362,7 @@ public:
 
     iterator erase(const_iterator first, const_iterator last)
     {
-        link_nodes(m_data[first.m_pos].get().prev, last.m_pos);
+        link_nodes(first.get_node().prev, last.m_pos);
         for (auto it = first; it != last;) {
             const size_type cur = it.m_pos;
             ++it;
@@ -563,7 +563,8 @@ private:
     template <class T>
     std::pair<iterator, bool> generic_insert(T && value)
     {
-        return insert_impl(std::forward<T>(value));
+        bool inserted;
+        return {insert_impl(inserted, std::forward<T>(value)), inserted};
     }
 
     template <class T>
@@ -572,21 +573,22 @@ private:
         if (hint != cend() && m_key_equal(*hint, value)) {
             return create_iterator(hint.m_pos);
         }
-        return insert_impl(std::forward<T>(value)).first;
+        bool inserted;
+        return insert_impl(inserted, std::forward<T>(value));
     }
 
     template <class T>
-    std::pair<iterator, bool> insert_impl(T && value)
+    iterator insert_impl(bool & inserted, T && value)
     {
         if (RehashPolicy::need_rehash(size() + 1, m_data.size())) {
             reserve(size() + 1);
         }
         const size_type pos = find_insertion_pos(value);
-        const bool used = m_data[pos].is_used();
-        if (!used) {
+        inserted = !m_data[pos].is_used();
+        if (inserted) {
             insert_at(pos, std::forward<T>(value));
         }
-        return {create_iterator(pos), !used};
+        return create_iterator(pos);
     }
 
     template <class T>
