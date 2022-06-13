@@ -22,7 +22,8 @@ template <class Key,
           class Equal = std::equal_to<Key>,
           class RangeHash = MaskRangeHashing,
           class RehashPolicy = Power2RehashPolicy>
-class HashMap
+class HashMap : private Hash
+    , private Equal
 {
 public:
     using key_type = Key;
@@ -189,9 +190,6 @@ private:
         }
     };
 
-    const hasher & m_hash;
-    const key_equal & m_key_equal;
-
     std::vector<Element> m_data;
 
     size_type m_size;
@@ -206,8 +204,8 @@ public:
     explicit HashMap(size_type expected_max_size = 0,
                      const hasher & hash = hasher(),
                      const key_equal & equal = key_equal())
-        : m_hash(hash)
-        , m_key_equal(equal)
+        : hasher(hash)
+        , key_equal(equal)
         , m_data(RehashPolicy::new_size(RehashPolicy::buckets_number(expected_max_size)))
     {
         reset();
@@ -589,9 +587,14 @@ public:
     }
 
 private:
+    constexpr bool equal_keys(const key_type & a, const key_type & b) const noexcept
+    {
+        return key_equal::operator()(a, b);
+    }
+
     constexpr size_type index(const key_type & key) const noexcept
     {
-        return RangeHash::hash(m_hash(key), m_data.size());
+        return RangeHash::hash(hasher::operator()(key), m_data.size());
     }
 
     constexpr iterator create_iterator(const size_type pos) noexcept
@@ -633,7 +636,7 @@ private:
                 return first_erased == m_data.size() ? i : first_erased;
             }
             if (m_data[i].is_used()) {
-                if (m_key_equal(m_data[i].get().value.first, key)) {
+                if (equal_keys(m_data[i].get().value.first, key)) {
                     return i;
                 }
             }
@@ -765,7 +768,7 @@ private:
 
     bool check_hint(const_iterator hint, const key_type & key)
     {
-        return hint != cend() && m_key_equal(hint->first, key);
+        return hint != cend() && equal_keys(hint->first, key);
     }
 
     template <class T>
