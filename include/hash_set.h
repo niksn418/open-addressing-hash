@@ -7,13 +7,6 @@
 #include <variant>
 #include <vector>
 
-namespace hashset_details {
-template <class T>
-constexpr bool IsConst = false;
-template <template <bool> class T>
-constexpr bool IsConst<T<true>> = true;
-} // namespace hashset_details
-
 template <class Key,
           class CollisionPolicy = LinearProbing,
           class Hash = std::hash<Key>,
@@ -115,24 +108,16 @@ private:
         }
     };
 
-    template <bool is_const>
     class Iterator
     {
     public:
         using iterator_category = std::forward_iterator_tag;
-        using value_type = std::conditional_t<is_const, const HashSet::value_type, HashSet::value_type>;
+        using value_type = HashSet::value_type;
         using difference_type = HashSet::difference_type;
         using pointer = const value_type *;
         using reference = const value_type &;
 
         Iterator() = default;
-
-        template <class T = Iterator, std::enable_if_t<hashset_details::IsConst<T>, int> = 0>
-        Iterator(const Iterator<false> & other)
-            : m_pos(other.m_pos)
-            , m_data(other.m_data)
-        {
-        }
 
         reference operator*() const
         {
@@ -170,7 +155,7 @@ private:
     private:
         friend class HashSet;
 
-        using element_ptr_type = std::conditional_t<is_const, const HashSet::Element *, HashSet::Element *>;
+        using element_ptr_type = const HashSet::Element *;
 
         size_type m_pos;
         element_ptr_type m_data;
@@ -195,8 +180,8 @@ private:
     static constexpr size_type m_end = std::numeric_limits<size_type>::max();
 
 public:
-    using iterator = Iterator<false>;
-    using const_iterator = Iterator<true>;
+    using iterator = Iterator;
+    using const_iterator = Iterator;
 
     explicit HashSet(size_type expected_max_size = 0,
                      const hasher & hash = hasher(),
@@ -247,7 +232,7 @@ public:
 
     iterator begin() noexcept
     {
-        return create_iterator(m_begin);
+        return cbegin();
     }
 
     const_iterator begin() const noexcept
@@ -257,12 +242,12 @@ public:
 
     const_iterator cbegin() const noexcept
     {
-        return create_const_iterator(m_begin);
+        return create_iterator(m_begin);
     }
 
     iterator end() noexcept
     {
-        return create_iterator(m_end);
+        return cend();
     }
 
     const_iterator end() const noexcept
@@ -272,7 +257,7 @@ public:
 
     const_iterator cend() const noexcept
     {
-        return create_const_iterator(m_end);
+        return create_iterator(m_end);
     }
 
     bool empty() const
@@ -364,7 +349,7 @@ public:
             m_data[cur].erase();
             --m_size;
         }
-        return create_iterator(last.m_pos);
+        return last;
     }
 
     size_type erase(const key_type & key)
@@ -495,12 +480,7 @@ private:
         return RangeHash::hash(hasher::operator()(key), m_data.size());
     }
 
-    constexpr iterator create_iterator(const size_type pos) noexcept
-    {
-        return {pos, m_data.data()};
-    }
-
-    constexpr const_iterator create_const_iterator(const size_type pos) const noexcept
+    constexpr iterator create_iterator(const size_type pos) const noexcept
     {
         return {pos, m_data.data()};
     }
@@ -571,7 +551,7 @@ private:
     iterator generic_insert(const_iterator hint, T && value)
     {
         if (hint != cend() && equal_keys(*hint, value)) {
-            return create_iterator(hint.m_pos);
+            return hint;
         }
         bool inserted;
         return insert_impl(inserted, std::forward<T>(value));
