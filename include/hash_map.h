@@ -231,14 +231,7 @@ public:
     {
     }
 
-    HashMap(HashMap && other)
-        : hasher(std::move(other))
-        , key_equal(std::move(other))
-        , m_data(std::move(other.m_data))
-        , m_size(other.m_size)
-        , m_begin(other.m_begin)
-    {
-    }
+    HashMap(HashMap && other) = default;
 
     HashMap(std::initializer_list<value_type> init,
             size_type expected_max_size = 0,
@@ -253,13 +246,7 @@ public:
         return *this = HashMap{other};
     }
 
-    HashMap & operator=(HashMap && other) noexcept
-    {
-        m_data = std::move(other.m_data);
-        m_size = std::move(other.m_size);
-        m_begin = std::move(other.m_begin);
-        return *this;
-    }
+    HashMap & operator=(HashMap && other) noexcept = default;
 
     HashMap & operator=(std::initializer_list<value_type> init)
     {
