@@ -229,8 +229,7 @@ public:
 
     HashSet & operator=(const HashSet & other)
     {
-        std::tie(m_data, m_size, m_begin) = std::tie(other.m_data, other.m_size, other.m_begin);
-        return *this;
+        return *this = HashSet{other};
     }
 
     HashSet & operator=(HashSet && other) noexcept
@@ -243,9 +242,7 @@ public:
 
     HashSet & operator=(std::initializer_list<value_type> init)
     {
-        clear();
-        insert(init);
-        return *this;
+        return *this = HashSet{init};
     }
 
     iterator begin() noexcept

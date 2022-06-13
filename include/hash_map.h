@@ -236,8 +236,7 @@ public:
 
     HashMap & operator=(const HashMap & other)
     {
-        std::tie(m_data, m_size, m_begin) = std::tie(other.m_data, other.m_size, other.m_begin);
-        return *this;
+        return *this = HashMap{other};
     }
 
     HashMap & operator=(HashMap && other) noexcept
@@ -250,9 +249,7 @@ public:
 
     HashMap & operator=(std::initializer_list<value_type> init)
     {
-        clear();
-        insert(init);
-        return *this;
+        return *this = HashMap{init};
     }
 
     iterator begin() noexcept
