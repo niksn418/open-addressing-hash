@@ -144,7 +144,7 @@ private:
 
         friend bool operator==(const Iterator & lhs, const Iterator & rhs)
         {
-            return lhs.m_pos == rhs.m_pos && lhs.m_data == rhs.m_data;
+            return lhs.m_pos == rhs.m_pos && lhs.m_container == rhs.m_container;
         }
 
         friend bool operator!=(const Iterator & lhs, const Iterator & rhs)
@@ -155,20 +155,20 @@ private:
     private:
         friend class HashSet;
 
-        using element_ptr_type = const HashSet::Element *;
+        using container_ptr_type = const HashSet *;
 
         size_type m_pos;
-        element_ptr_type m_data;
+        container_ptr_type m_container;
 
-        constexpr Iterator(const size_type node_index, const element_ptr_type data) noexcept
+        constexpr Iterator(const size_type node_index, const container_ptr_type container) noexcept
             : m_pos(node_index)
-            , m_data(data)
+            , m_container(container)
         {
         }
 
         constexpr auto & get_node() const noexcept
         {
-            return m_data[m_pos].get();
+            return m_container->m_data[m_pos].get();
         }
     };
 
@@ -482,7 +482,7 @@ private:
 
     constexpr iterator create_iterator(const size_type pos) const noexcept
     {
-        return {pos, m_data.data()};
+        return {pos, this};
     }
 
     constexpr void remove_node(const size_type pos) noexcept

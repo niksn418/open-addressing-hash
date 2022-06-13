@@ -133,7 +133,7 @@ private:
         template <class T = Iterator, std::enable_if_t<hashmap_details::IsConst<T>, int> = 0>
         Iterator(const Iterator<false> & other)
             : m_pos(other.m_pos)
-            , m_data(other.m_data)
+            , m_container(other.m_container)
         {
         }
 
@@ -162,7 +162,7 @@ private:
 
         friend bool operator==(const Iterator & lhs, const Iterator & rhs)
         {
-            return lhs.m_pos == rhs.m_pos && lhs.m_data == rhs.m_data;
+            return lhs.m_pos == rhs.m_pos && lhs.m_container == rhs.m_container;
         }
 
         friend bool operator!=(const Iterator & lhs, const Iterator & rhs)
@@ -173,20 +173,20 @@ private:
     private:
         friend class HashMap;
 
-        using element_ptr_type = std::conditional_t<is_const, const HashMap::Element *, HashMap::Element *>;
+        using container_ptr_type = std::conditional_t<is_const, const HashMap *, HashMap *>;
 
         size_type m_pos;
-        element_ptr_type m_data;
+        container_ptr_type m_container;
 
-        constexpr Iterator(const size_type node_index, const element_ptr_type data) noexcept
+        constexpr Iterator(const size_type node_index, const container_ptr_type container) noexcept
             : m_pos(node_index)
-            , m_data(data)
+            , m_container(container)
         {
         }
 
         constexpr auto & get_node() const noexcept
         {
-            return m_data[m_pos].get();
+            return m_container->m_data[m_pos].get();
         }
     };
 
@@ -596,12 +596,12 @@ private:
 
     constexpr iterator create_iterator(const size_type pos) noexcept
     {
-        return {pos, m_data.data()};
+        return {pos, this};
     }
 
     constexpr const_iterator create_const_iterator(const size_type pos) const noexcept
     {
-        return {pos, m_data.data()};
+        return {pos, this};
     }
 
     constexpr void remove_node(const size_type pos) noexcept
