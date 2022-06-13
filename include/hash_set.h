@@ -194,15 +194,33 @@ public:
     }
 
     template <class InputIt>
-    HashSet(InputIt first, InputIt last, size_type expected_max_size = 0, const hasher & hash = hasher(), const key_equal & equal = key_equal())
+    HashSet(InputIt first,
+            InputIt last,
+            size_type expected_max_size = 0,
+            const hasher & hash = hasher(),
+            const key_equal & equal = key_equal())
         : HashSet(expected_max_size, hash, equal)
     {
         insert(first, last);
     }
 
-    HashSet(const HashSet & other) = default;
+    HashSet(const HashSet & other)
+        : hasher(other)
+        , key_equal(other)
+        , m_data(other.m_data)
+        , m_size(other.m_size)
+        , m_begin(other.m_begin)
+    {
+    }
 
-    HashSet(HashSet && other) = default;
+    HashSet(HashSet && other)
+        : hasher(std::move(other))
+        , key_equal(std::move(other))
+        , m_data(std::move(other.m_data))
+        , m_size(other.m_size)
+        , m_begin(other.m_begin)
+    {
+    }
 
     HashSet(std::initializer_list<value_type> init,
             size_type expected_max_size = 0,

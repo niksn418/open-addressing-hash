@@ -222,9 +222,23 @@ public:
         insert(first, last);
     }
 
-    HashMap(const HashMap & other) = default;
+    HashMap(const HashMap & other)
+        : hasher(other)
+        , key_equal(other)
+        , m_data(other.m_data)
+        , m_size(other.m_size)
+        , m_begin(other.m_begin)
+    {
+    }
 
-    HashMap(HashMap && other) = default;
+    HashMap(HashMap && other)
+        : hasher(std::move(other))
+        , key_equal(std::move(other))
+        , m_data(std::move(other.m_data))
+        , m_size(other.m_size)
+        , m_begin(other.m_begin)
+    {
+    }
 
     HashMap(std::initializer_list<value_type> init,
             size_type expected_max_size = 0,
