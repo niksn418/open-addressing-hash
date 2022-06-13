@@ -133,7 +133,7 @@ private:
         template <class T = Iterator, std::enable_if_t<hashmap_details::IsConst<T>, int> = 0>
         Iterator(const Iterator<false> & other)
             : m_pos(other.m_pos)
-            , m_container(other.m_container)
+            , m_data(other.m_data)
         {
         }
 
@@ -162,7 +162,7 @@ private:
 
         friend bool operator==(const Iterator & lhs, const Iterator & rhs)
         {
-            return lhs.m_pos == rhs.m_pos && lhs.m_container == rhs.m_container;
+            return lhs.m_pos == rhs.m_pos && lhs.m_data == rhs.m_data;
         }
 
         friend bool operator!=(const Iterator & lhs, const Iterator & rhs)
@@ -173,20 +173,20 @@ private:
     private:
         friend class HashMap;
 
-        using container_ptr_type = std::conditional_t<is_const, const HashMap *, HashMap *>;
+        using element_ptr_type = std::conditional_t<is_const, const HashMap::Element *, HashMap::Element *>;
 
         size_type m_pos;
-        container_ptr_type m_container;
+        element_ptr_type m_data;
 
-        constexpr Iterator(const size_type node_index, const container_ptr_type container) noexcept
+        constexpr Iterator(const size_type node_index, const element_ptr_type data) noexcept
             : m_pos(node_index)
-            , m_container(container)
+            , m_data(data)
         {
         }
 
         constexpr auto & get_node() const noexcept
         {
-            return m_container->m_data[m_pos].get();
+            return m_data[m_pos].get();
         }
     };
 
@@ -239,7 +239,13 @@ public:
         return *this = HashMap{other};
     }
 
-    HashMap & operator=(HashMap && other) noexcept = default;
+    HashMap & operator=(HashMap && other) noexcept
+    {
+        m_data = std::move(other.m_data);
+        m_size = std::move(other.m_size);
+        m_begin = std::move(other.m_begin);
+        return *this;
+    }
 
     HashMap & operator=(std::initializer_list<value_type> init)
     {
@@ -590,12 +596,12 @@ private:
 
     constexpr iterator create_iterator(const size_type pos) noexcept
     {
-        return {pos, this};
+        return {pos, m_data.data()};
     }
 
     constexpr const_iterator create_const_iterator(const size_type pos) const noexcept
     {
-        return {pos, this};
+        return {pos, m_data.data()};
     }
 
     constexpr void remove_node(const size_type pos) noexcept
