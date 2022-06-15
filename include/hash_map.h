@@ -706,8 +706,8 @@ private:
     template <class T, class... Args>
     std::pair<iterator, bool> generic_try_emplace(T && key, Args &&... args)
     {
-        const size_type old_size = size();
-        return {create_iterator(try_emplace_impl(std::forward<T>(key), std::forward<Args>(args)...)), old_size != size()};
+        bool inserted;
+        return {try_emplace_impl(inserted, std::forward<T>(key), std::forward<Args>(args)...), inserted};
     }
 
     template <class T, class... Args>
@@ -716,17 +716,25 @@ private:
         if (check_hint(hint, key)) {
             return create_iterator(hint.m_pos);
         }
-        return create_iterator(try_emplace_impl(std::forward<T>(key), std::forward<Args>(args)...));
+        bool inserted;
+        return try_emplace_impl(inserted, std::forward<T>(key), std::forward<Args>(args)...);
     }
 
     template <class T, class... Args>
-    size_type try_emplace_impl(T && key, Args &&... args)
+    iterator try_emplace_impl(bool & inserted, T && key, Args &&... args)
+    {
+        return create_iterator(try_emplace_pos(inserted, std::forward<T>(key), std::forward<Args>(args)...));
+    }
+
+    template <class T, class... Args>
+    size_type try_emplace_pos(bool & inserted, T && key, Args &&... args)
     {
         if (RehashPolicy::need_rehash(size() + 1, m_data.size())) {
             reserve(size() + 1);
         }
         const size_type pos = find_insertion_pos(key);
-        if (!m_data[pos].is_used()) {
+        inserted = !m_data[pos].is_used();
+        if (inserted) {
             insert_at(pos,
                       std::piecewise_construct,
                       std::forward_as_tuple(std::forward<T>(key)),
@@ -738,7 +746,8 @@ private:
     template <class T>
     mapped_type & generic_subscript_operator(T && key)
     {
-        return m_data[try_emplace_impl(std::forward<T>(key))].get().value.second;
+        bool inserted;
+        return m_data[try_emplace_pos(inserted, std::forward<T>(key))].get().value.second;
     }
 
     template <class... Args>
