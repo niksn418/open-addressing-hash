@@ -508,12 +508,12 @@ public:
 
     mapped_type & operator[](const key_type & key)
     {
-        return generic_braces_operator(key);
+        return generic_subscript_operator(key);
     }
 
     mapped_type & operator[](key_type && key)
     {
-        return generic_braces_operator(std::move(key));
+        return generic_subscript_operator(std::move(key));
     }
 
     size_type bucket_count() const
@@ -744,7 +744,7 @@ private:
     }
 
     template <class T>
-    mapped_type & generic_braces_operator(T && key)
+    mapped_type & generic_subscript_operator(T && key)
     {
         bool inserted;
         return m_data[try_emplace_pos(inserted, std::forward<T>(key))].get().value.second;
