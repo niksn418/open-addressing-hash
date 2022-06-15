@@ -548,8 +548,15 @@ private:
     template <class T>
     std::pair<iterator, bool> generic_insert(T && value)
     {
-        bool inserted;
-        return {insert_impl(inserted, std::forward<T>(value)), inserted};
+        if (RehashPolicy::need_rehash(size() + 1, m_data.size())) {
+            reserve(size() + 1);
+        }
+        const size_type pos = find_insertion_pos(value);
+        const bool used = m_data[pos].is_used();
+        if (!used) {
+            insert_at(pos, std::forward<T>(value));
+        }
+        return {create_iterator(pos), !used};
     }
 
     template <class T>
@@ -558,22 +565,7 @@ private:
         if (hint != cend() && equal_keys(*hint, value)) {
             return hint;
         }
-        bool inserted;
-        return insert_impl(inserted, std::forward<T>(value));
-    }
-
-    template <class T>
-    iterator insert_impl(bool & inserted, T && value)
-    {
-        if (RehashPolicy::need_rehash(size() + 1, m_data.size())) {
-            reserve(size() + 1);
-        }
-        const size_type pos = find_insertion_pos(value);
-        inserted = !m_data[pos].is_used();
-        if (inserted) {
-            insert_at(pos, std::forward<T>(value));
-        }
-        return create_iterator(pos);
+        return generic_insert(std::forward<T>(value)).first;
     }
 
     template <class T>
