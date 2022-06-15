@@ -681,8 +681,7 @@ private:
     template <class T, class M>
     iterator insert_or_assign_impl(bool & inserted, T && key, M && value)
     {
-        const size_type pos = try_emplace_impl(inserted, std::forward<T>(key), std::forward<M>(value));
-        iterator result = create_iterator(pos);
+        iterator result = try_emplace_iterator(inserted, std::forward<T>(key), std::forward<M>(value));
         if (!inserted) {
             result->second = std::forward<M>(value);
         }
@@ -710,8 +709,7 @@ private:
     std::pair<iterator, bool> generic_try_emplace(T && key, Args &&... args)
     {
         bool inserted;
-        const size_type pos = try_emplace_impl(inserted, std::forward<T>(key), std::forward<Args>(args)...);
-        return {create_iterator(pos), inserted};
+        return {try_emplace_iterator(inserted, std::forward<T>(key), std::forward<Args>(args)...), inserted};
     }
 
     template <class T, class... Args>
@@ -721,8 +719,13 @@ private:
             return create_iterator(hint.m_pos);
         }
         bool inserted;
-        const size_type pos = try_emplace_impl(inserted, std::forward<T>(key), std::forward<Args>(args)...);
-        return create_iterator(pos);
+        return try_emplace_iterator(inserted, std::forward<T>(key), std::forward<Args>(args)...);
+    }
+
+    template <class T, class... Args>
+    iterator try_emplace_iterator(bool & inserted, T && key, Args &&... args)
+    {
+        return create_iterator(try_emplace_impl(inserted, std::forward<T>(key), std::forward<Args>(args)...));
     }
 
     template <class T, class... Args>
