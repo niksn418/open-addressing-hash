@@ -225,18 +225,14 @@ public:
 
     HashSet & operator=(const HashSet & other)
     {
-        HashSet copy{other};
-        swap(copy);
-        return *this;
+        return *this = HashSet{other};
     }
 
     HashSet & operator=(HashSet && other) noexcept = default;
 
     HashSet & operator=(std::initializer_list<value_type> init)
     {
-        HashSet copy{init};
-        swap(copy);
-        return *this;
+        return *this = HashSet{init};
     }
 
     iterator begin() noexcept

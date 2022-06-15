@@ -243,18 +243,14 @@ public:
 
     HashMap & operator=(const HashMap & other)
     {
-        HashMap copy{other};
-        swap(copy);
-        return *this;
+        return *this = HashMap{other};
     }
 
     HashMap & operator=(HashMap && other) noexcept = default;
 
     HashMap & operator=(std::initializer_list<value_type> init)
     {
-        HashMap copy{init};
-        swap(copy);
-        return *this;
+        return *this = HashMap{init};
     }
 
     iterator begin() noexcept
