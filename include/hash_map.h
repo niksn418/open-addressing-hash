@@ -663,8 +663,7 @@ private:
     template <class T, class M>
     std::pair<iterator, bool> generic_insert_or_assign(T && key, M && value)
     {
-        bool inserted;
-        return {insert_or_assign_impl(inserted, std::forward<T>(key), std::forward<M>(value)), inserted};
+        return insert_or_assign_impl(std::forward<T>(key), std::forward<M>(value));
     }
 
     template <class T, class M>
@@ -674,16 +673,15 @@ private:
             m_data[hint.m_pos].get().value.second = std::forward<M>(value);
             return create_iterator(hint.m_pos);
         }
-        bool inserted;
-        return insert_or_assign_impl(inserted, std::forward<T>(key), std::forward<M>(value));
+        return insert_or_assign_impl(std::forward<T>(key), std::forward<M>(value)).first;
     }
 
     template <class T, class M>
-    iterator insert_or_assign_impl(bool & inserted, T && key, M && value)
+    std::pair<iterator, bool> insert_or_assign_impl(T && key, M && value)
     {
-        iterator result = try_emplace_impl(inserted, std::forward<T>(key), std::forward<M>(value));
-        if (!inserted) {
-            result->second = std::forward<M>(value);
+        std::pair<iterator, bool> result = try_emplace(std::forward<T>(key), std::forward<M>(value));
+        if (!result.second) {
+            result.first->second = std::forward<M>(value);
         }
         return result;
     }
